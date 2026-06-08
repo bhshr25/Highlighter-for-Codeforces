@@ -1,0 +1,21 @@
+.cf-highlighter-mark {
+  background:
+    linear-gradient(
+      104deg,
+      rgba(255, 234, 102, 0.45) 0.9%,
+      rgba(255, 226, 73, 0.82) 2.4%,
+      rgba(255, 229, 84, 0.62) 97%,
+      rgba(255, 238, 135, 0.38) 100%
+    );
+  border-radius: 0.12em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: inherit;
+  padding: 0.03em 0.08em;
+}
+
+mjx-container.cf-highlighter-mark,
+.cf-highlighter-mark mjx-container,
+.cf-highlighter-mark mjx-assistive-mml {
+  color: inherit;
+}
