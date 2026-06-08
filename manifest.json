@@ -30,8 +30,8 @@
   "commands": {
     "highlight-selection": {
       "suggested_key": {
-        "default": "Ctrl+Shift+H",
-        "mac": "Command+Shift+H"
+        "default": "Alt+Shift+D",
+        "mac": "Alt+Shift+D"
       },
       "description": "Highlight the current selection"
     }

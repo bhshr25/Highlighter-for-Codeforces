@@ -12,10 +12,16 @@
   -webkit-box-decoration-break: clone;
   color: inherit;
   padding: 0.03em 0.08em;
+  white-space: inherit;
 }
 
 mjx-container.cf-highlighter-mark,
 .cf-highlighter-mark mjx-container,
 .cf-highlighter-mark mjx-assistive-mml {
   color: inherit;
+}
+
+.sample-test pre .cf-highlighter-mark {
+  border-radius: 0;
+  padding: 0;
 }
