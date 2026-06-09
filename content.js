@@ -11,18 +11,59 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "CF_REMOVE_HIGHLIGHT") {
     removeHighlightsFromSelection();
   }
+
+  if (message?.type === "CF_CLEAR_ALL_HIGHLIGHTS") {
+    clearAllHighlights();
+  }
+});
+
+// Handle double clicks on existing highlights to remove them
+document.addEventListener("dblclick", (event) => {
+  const element = getElementFromNode(event.target);
+  if (!element) return;
+
+  const highlightNode = element.closest(HIGHLIGHT_SELECTOR);
+  if (!highlightNode) return;
+
+  const highlightId = highlightNode.dataset.cfHighlightId;
+  if (highlightId) {
+    removeHighlightById(highlightId);
+    
+    // Clear the selection that the browser auto-creates on double click
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+  }
 });
 
 document.addEventListener("keydown", (event) => {
-  if (!isUndoShortcut(event) || isEditableElement(event.target)) {
+  // Ignore shortcuts if the user is typing in an input field or textarea
+  if (isEditableElement(event.target)) {
     return;
   }
 
-  if (undoLastHighlight()) {
+  // 1. Listen for Alt + Shift + C to clear all highlights
+  if (event.key.toLowerCase() === "c" && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    clearAllHighlights();
     event.preventDefault();
     event.stopPropagation();
+    return;
+  }
+
+  // 2. Listen for Undo (Ctrl+Z or Cmd+Z)
+  if (isUndoShortcut(event)) {
+    if (undoLastHighlight()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }
 }, true);
+
+// Generates a unique ID for each highlighting action
+function generateHighlightId() {
+  return `cf-hl-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
 
 function highlightCurrentSelection() {
   const selection = window.getSelection();
@@ -30,10 +71,13 @@ function highlightCurrentSelection() {
     return;
   }
 
+  const highlightId = generateHighlightId();
   const ranges = getUsableRanges(selection);
-  const batch = ranges.flatMap((range) => highlightRange(range));
+  const batch = ranges.flatMap((range) => highlightRange(range, highlightId));
+  
   if (batch.length > 0) {
-    highlightHistory.push(batch);
+    // Store the ID alongside the batch items for targeted removal
+    highlightHistory.push({ id: highlightId, items: batch });
   }
 
   selection.removeAllRanges();
@@ -54,6 +98,24 @@ function removeHighlightsFromSelection() {
   selection.removeAllRanges();
 }
 
+function removeHighlightById(highlightId) {
+  // Find all elements sharing this specific highlight ID
+  const elements = document.querySelectorAll(`[data-cf-highlight-id="${highlightId}"]`);
+  elements.forEach(unwrapElement);
+
+  // Remove the batch from history so undo doesn't attempt to process it
+  const historyIndex = highlightHistory.findIndex(batch => batch.id === highlightId);
+  if (historyIndex !== -1) {
+    highlightHistory.splice(historyIndex, 1);
+  }
+}
+
+function clearAllHighlights() {
+  const elements = document.querySelectorAll(HIGHLIGHT_SELECTOR);
+  elements.forEach(unwrapElement);
+  highlightHistory.length = 0; // Clear the undo history array completely
+}
+
 function getUsableRanges(selection) {
   return Array.from({ length: selection.rangeCount }, (_, index) => {
     const range = selection.getRangeAt(index);
@@ -61,14 +123,14 @@ function getUsableRanges(selection) {
   }).filter(Boolean);
 }
 
-function highlightRange(range) {
+function highlightRange(range, highlightId) {
   if (!range || range.collapsed || range.toString().trim() === "") {
     return [];
   }
 
   // MathJax owns a generated DOM tree, so mark the rendered container itself
   // instead of inserting nodes into the formula internals.
-  const highlightedItems = highlightIntersectingMathJax(range);
+  const highlightedItems = highlightIntersectingMathJax(range, highlightId);
 
   // Codeforces samples rely on preformatted whitespace. Wrapping only the
   // selected text-node slices preserves the surrounding sample block structure.
@@ -80,13 +142,13 @@ function highlightRange(range) {
     });
 
   textPieces.reverse().forEach(({ node, startOffset, endOffset }) => {
-    highlightedItems.push(wrapTextPiece(node, startOffset, endOffset));
+    highlightedItems.push(wrapTextPiece(node, startOffset, endOffset, highlightId));
   });
 
   return highlightedItems.filter(Boolean);
 }
 
-function highlightIntersectingMathJax(range) {
+function highlightIntersectingMathJax(range, highlightId) {
   return collectIntersectingElements(range, MATHJAX_SELECTOR).map((element) => {
     if (element.classList.contains(HIGHLIGHT_CLASS)) {
       return null;
@@ -94,6 +156,7 @@ function highlightIntersectingMathJax(range) {
 
     element.classList.add(HIGHLIGHT_CLASS);
     element.dataset.cfHighlighter = "mathjax";
+    element.dataset.cfHighlightId = highlightId;
     return { type: "mathjax", element };
   }).filter(Boolean);
 }
@@ -174,11 +237,11 @@ function findLastPointInsideRange(range, textNode) {
   return low;
 }
 
-function wrapTextPiece(textNode, startOffset, endOffset) {
+function wrapTextPiece(textNode, startOffset, endOffset, highlightId) {
   const selected = textNode.splitText(startOffset);
   selected.splitText(endOffset - startOffset);
 
-  const wrapper = createHighlightElement();
+  const wrapper = createHighlightElement(highlightId);
   selected.parentNode.insertBefore(wrapper, selected);
   wrapper.appendChild(selected);
   return { type: "wrapper", element: wrapper };
@@ -224,6 +287,7 @@ function unwrapElement(element) {
   if (element.dataset.cfHighlighter === "mathjax") {
     element.classList.remove(HIGHLIGHT_CLASS);
     delete element.dataset.cfHighlighter;
+    delete element.dataset.cfHighlightId;
     return;
   }
 
@@ -243,7 +307,7 @@ function unwrapElement(element) {
 function undoLastHighlight() {
   while (highlightHistory.length > 0) {
     const batch = highlightHistory.pop();
-    const liveItems = batch.filter(({ element }) => element?.isConnected);
+    const liveItems = batch.items.filter(({ element }) => element?.isConnected);
 
     if (liveItems.length === 0) {
       continue;
@@ -256,10 +320,11 @@ function undoLastHighlight() {
   return false;
 }
 
-function createHighlightElement() {
+function createHighlightElement(highlightId) {
   const mark = document.createElement("mark");
   mark.className = HIGHLIGHT_CLASS;
   mark.dataset.cfHighlighter = "wrapper";
+  mark.dataset.cfHighlightId = highlightId;
   return mark;
 }
 
@@ -267,7 +332,7 @@ function getElementFromNode(node) {
   if (!node) {
     return null;
   }
-
+  // Safely grab the parent element if the event originates on a pure text node
   return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
 }
 

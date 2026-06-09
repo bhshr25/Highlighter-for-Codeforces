@@ -3,37 +3,49 @@
   "name": "CF Highlighter",
   "version": "1.0.0",
   "description": "Highlight selected text and MathJax expressions on Codeforces pages.",
+
   "permissions": [
     "contextMenus",
-    "activeTab"
+    "activeTab",
+    "commands"
   ],
+
   "host_permissions": [
     "https://codeforces.com/*"
   ],
+
   "background": {
     "service_worker": "background.js"
   },
+
+  "action": {
+    "default_title": "CF Highlighter"
+  },
+
   "content_scripts": [
     {
-      "matches": [
-        "https://codeforces.com/*"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "css": [
-        "styles.css"
-      ],
+      "matches": ["https://codeforces.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
       "run_at": "document_idle"
     }
   ],
+
   "commands": {
     "highlight-selection": {
       "suggested_key": {
         "default": "Alt+Shift+D",
         "mac": "Alt+Shift+D"
       },
-      "description": "Highlight the current selection"
+      "description": "Highlight selection"
+    },
+
+    "clear-highlights": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Clear all highlights"
     }
   }
 }
